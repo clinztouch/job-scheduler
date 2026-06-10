@@ -1,19 +1,23 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { JobStatus, type Job } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HeapService } from '../scheduler/heap.service';
 import { TimingWheelService } from '../scheduler/timing-wheel.service';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { JobStatus } from '@prisma/client';
-import { OnEvent } from '@nestjs/event-emitter';
-import type { Job } from '@prisma/client';
 
-const POLL_INTERVAL_MS = parseInt(process.env.WORKER_POLL_INTERVAL_MS ?? '2000');
+const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 2000);
 
 @Injectable()
-export class WorkerService implements OnModuleInit, OnModuleDestroy {
+export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(WorkerService.name);
   private poller: NodeJS.Timeout | null = null;
   private isProcessing = false;
+  private started = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -22,14 +26,21 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  onModuleInit() {
-    this.loadPendingJobsIntoHeap();
-    this.poller = setInterval(() => this.poll(), POLL_INTERVAL_MS);
+  async onApplicationBootstrap() {
+    if (this.started) return;
+    this.started = true;
+
+    await this.loadPendingJobsIntoHeap();
+    this.logger.log(`Scheduler bootstrap completed`);
+    this.poller = setInterval(() => void this.poll(), POLL_INTERVAL_MS);
     this.logger.log(`Worker started | pollInterval=${POLL_INTERVAL_MS}ms`);
   }
 
   onModuleDestroy() {
-    if (this.poller) clearInterval(this.poller);
+    if (this.poller) {
+      clearInterval(this.poller);
+      this.poller = null;
+    }
   }
 
   @OnEvent('job.readmit')
@@ -41,7 +52,9 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
   @OnEvent('job.created')
   async onJobCreated(job: Job) {
     await this.admitToHeap(job.id);
-    this.logger.log(`Job admitted | id=${job.id} type=${job.type} priority=${job.priority}`);
+    this.logger.log(
+      `Job admitted | id=${job.id} type=${job.type} priority=${job.priority}`,
+    );
   }
 
   @OnEvent('job.completed')
@@ -124,20 +137,16 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       const next = this.heap.peek();
       if (!next) return;
 
-      // Atomic lock — only one worker picks this job
       const result = await this.prisma.job.updateMany({
         where: { id: next.id, status: JobStatus.PENDING },
         data: { status: JobStatus.PROCESSING },
       });
 
       if (result.count === 0) {
-        // Lost the race — another worker grabbed it or it was cancelled
-        // Remove stale entry from heap by id to keep heap clean
         this.heap.remove(next.id);
         return;
       }
 
-      // Successfully locked — remove from heap by id (safer than pop)
       this.heap.remove(next.id);
 
       const lockedJob = await this.prisma.job.findUnique({ where: { id: next.id } });
@@ -147,7 +156,10 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
         `Job started | id=${lockedJob.id} type=${lockedJob.type} priority=${lockedJob.priority}`,
       );
       this.eventEmitter.emit('job.started', lockedJob);
-      this.eventEmitter.emit('job.updated', { ...lockedJob, status: JobStatus.PROCESSING });
+      this.eventEmitter.emit('job.updated', {
+        ...lockedJob,
+        status: JobStatus.PROCESSING,
+      });
       this.eventEmitter.emit('job.execute', lockedJob);
     } finally {
       this.isProcessing = false;
