@@ -108,3 +108,16 @@ WORKER_ONLY=true npx ts-node -r tsconfig-paths/register src/worker/worker.bootst
 | `AGING_INTERVAL_SECONDS` | `30` | How long a job waits before priority boost |
 | `AGING_BOOST_AMOUNT` | `0.5` | How much effectivePriority is reduced per aging cycle |
 | `WORKER_POLL_INTERVAL_MS` | `2000` | How often the worker polls the heap |
+
+
+## Cancellation Behavior
+
+If a job is cancelled while still pending, it will never be processed.
+
+If a job is already processing when cancellation occurs, the worker completes its current execution path but will not mark the job as COMPLETED. The final state remains CANCELLED.
+
+
+## Starvation Prevention
+
+Jobs waiting longer than 30 seconds receive an aging boost.
+Every aging cycle reduces effectivePriority by 0.5, allowing lower-priority jobs to eventually overtake continuously arriving high-priority work.

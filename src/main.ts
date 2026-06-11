@@ -7,12 +7,16 @@ import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
+const isWorkerOnly = process.env.WORKER_ONLY === 'true';
+
 async function bootstrap() {
-  if (process.env.WORKER_ONLY === 'true') {
-    // Worker-only mode — worker.bootstrap.ts is the entry point
-    // Run with: pnpm start:worker:dev
-    console.log('Use worker.bootstrap.ts directly for worker-only mode');
-    process.exit(0);
+  if (isWorkerOnly) {
+    // Worker-only mode — no HTTP server, no Swagger, no static assets
+    const app = await NestFactory.create(AppModule, { bufferLogs: true });
+    app.useLogger(app.get(Logger));
+    await app.init();
+    console.log('Worker process started — polling for jobs');
+    return;
   }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });

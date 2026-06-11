@@ -14,6 +14,8 @@ import { RetryModule } from './retry/retry.module';
 import { DlqModule } from './dlq/dlq.module';
 import { SseModule } from './sse/sse.module';
 
+const isWorkerOnly = process.env.WORKER_ONLY === 'true';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -21,15 +23,16 @@ import { SseModule } from './sse/sse.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     AppLoggerModule,
-    JobsModule,
     SchedulerModule,
-    WorkerModule,
     HandlersModule,
     RetryModule,
     DlqModule,
-    SseModule,
+    // API-only modules — not needed in worker process
+    ...(isWorkerOnly ? [] : [JobsModule, SseModule]),
+    // Worker only loads in worker process
+    ...(isWorkerOnly ? [WorkerModule] : []),
   ],
-  controllers: [AppController],
-  providers: [AppService]
+  controllers: [...(isWorkerOnly ? [] : [AppController])],
+  providers: [AppService],
 })
 export class AppModule {}
