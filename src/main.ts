@@ -10,14 +10,15 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 const isWorkerOnly = process.env.WORKER_ONLY === 'true';
 
 async function bootstrap() {
-  if (isWorkerOnly) {
-    // Worker-only mode — no HTTP server, no Swagger, no static assets
-    const app = await NestFactory.create(AppModule, { bufferLogs: true });
-    app.useLogger(app.get(Logger));
-    await app.init();
-    console.log('Worker process started — polling for jobs');
-    return;
-  }
+if (isWorkerOnly) {
+  const app = await NestFactory.createApplicationContext(AppModule);
+
+  app.useLogger(app.get(Logger));
+
+  console.log('Worker process started — polling for jobs');
+
+  return;
+}
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
