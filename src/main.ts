@@ -24,6 +24,12 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  app.enableCors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+});
+
   const config = new DocumentBuilder()
     .setTitle('Job Scheduler API')
     .setDescription('Background job scheduler with priority queue, DAG workflows, and DLQ')
