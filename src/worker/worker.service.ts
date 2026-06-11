@@ -26,15 +26,19 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async onApplicationBootstrap() {
-    if (this.started) return;
-    this.started = true;
+async onApplicationBootstrap() {
+  if (this.started) return;
+  this.started = true;
 
-    await this.loadPendingJobsIntoHeap();
-    this.logger.log(`Scheduler bootstrap completed`);
-    this.poller = setInterval(() => void this.poll(), POLL_INTERVAL_MS);
-    this.logger.log(`Worker started | pollInterval=${POLL_INTERVAL_MS}ms`);
-  }
+  await this.loadPendingJobsIntoHeap();
+  this.logger.log(`Scheduler bootstrap completed`);
+  
+  // Poll DB for new jobs every 5 seconds
+  setInterval(() => void this.loadPendingJobsIntoHeap(), 5000);
+  
+  this.poller = setInterval(() => void this.poll(), POLL_INTERVAL_MS);
+  this.logger.log(`Worker started | pollInterval=${POLL_INTERVAL_MS}ms`);
+}
 
   onModuleDestroy() {
     if (this.poller) {
