@@ -80,6 +80,11 @@ Winner:       Heap (for mixed workloads)
 
 The heap wins on insertion in this benchmark because the timing wheel has overhead computing bucket slots and checking for re-scheduling across rotations. The timing wheel's advantage is architectural — O(1) slot placement for recurring jobs at fixed intervals, no comparison needed.
 
+
+## System Architecture
+
+![Architecture Diagram](docs/architecture.png)
+
 ## DAG Workflow
 
 **Files:** `prisma/schema.prisma`, `src/worker/worker.service.ts`
